@@ -1,0 +1,26 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BDGAMINGYT8003/AnonyChat.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/BDGAMINGYT8003/AnonyChat/issues"
+  },
+  "homepage": "https://github.com/BDGAMINGYT8003/AnonyChat#readme",
+  "dependencies": {
+    "better-sqlite3": "^12.5.0",
+    "discord.js": "^14.25.1",
+    "uuid": "^10.0.0"
+  }
+}

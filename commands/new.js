@@ -1,0 +1,95 @@
+const { SlashCommandBuilder } = require('discord.js');
+const db = require('../services/database');
+const matchmaking = require('../services/matchmaking');
+const safety = require('../services/safety');
+const EmbedFactory = require('../utils/embeds');
+
+module.exports = {
+    data: new SlashCommandBuilder()
+        .setName('new')
+        .setDescription('Find a new chat partner'),
+
+    async execute(interaction) {
+        // 1. Check Safety Status
+        const safetyStatus = safety.checkUserSafetyStatus(interaction.user.id);
+        if (!safetyStatus.isAllowed) {
+            return interaction.reply({
+                embeds: [EmbedFactory.createErrorEmbed("Access Denied", safetyStatus.reason)],
+                ephemeral: true
+            });
+        }
+
+        // 2. Check Profile Existence
+        const profile = db.getUserProfile(interaction.user.id);
+        if (!profile || !profile.is_onboarded) {
+            return interaction.reply({
+                content: "Please set up your profile first using `/onboard`.",
+                ephemeral: true
+            });
+        }
+
+        // 3. Check Active Session
+        const activeSession = db.getActiveSessionForUser(interaction.user.id);
+        if (activeSession) {
+            return interaction.reply({
+                content: "You are already in a chat! Use `/leave` to end it first.",
+                ephemeral: true
+            });
+        }
+
+        // 4. Check if already in queue
+        const position = matchmaking.getQueuePosition(interaction.user.id);
+        if (position) {
+            return interaction.reply({
+                content: "You are already in the queue! Please wait...",
+                ephemeral: true
+            });
+        }
+
+        // 5. Add to Queue
+        const added = await matchmaking.addToQueue(interaction.user.id, profile.anonymous_id);
+
+        if (added) {
+            const queueSize = matchmaking.getQueueSize();
+            await interaction.reply({
+                embeds: [EmbedFactory.createSearchEmbed(queueSize)],
+                ephemeral: true
+            });
+
+            // Trigger match attempt
+            await this.attemptMatch(interaction.user.id, interaction.client);
+        } else {
+            await interaction.reply({ content: "Failed to join queue.", ephemeral: true });
+        }
+    },
+
+    async attemptMatch(userId, client) {
+        try {
+            const match = await matchmaking.findMatch(userId);
+
+            if (match) {
+                // Create Session
+                const sessionId = db.createChatSession(
+                    match.user1.user_id,
+                    match.user2.user_id,
+                    match.user1.anonymous_id,
+                    match.user2.anonymous_id
+                );
+
+                // Notify both users
+                const user1 = await client.users.fetch(match.user1.user_id);
+                const user2 = await client.users.fetch(match.user2.user_id);
+
+                const embed = EmbedFactory.createMatchFoundEmbed(sessionId);
+
+                await user1.send({ embeds: [embed] }).catch(() => {});
+                await user2.send({ embeds: [embed] }).catch(() => {});
+
+                // If user triggered this via slash command, update their interaction
+                // (Though they might have received a DM already)
+            }
+        } catch (error) {
+            console.error("Matchmaking error:", error);
+        }
+    }
+};

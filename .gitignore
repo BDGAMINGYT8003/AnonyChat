@@ -1,0 +1,5 @@
+node_modules/
+.replit
+.env
+__pycache__/
+*.db
