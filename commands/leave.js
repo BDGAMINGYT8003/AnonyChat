@@ -7,7 +7,7 @@ const EmbedFactory = require('../utils/embeds');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('leave')
-        .setDescription('End your current chat session'),
+        .setDescription('Leave the matchmaking queue'),
 
     async execute(interaction) {
         // Check if in queue
@@ -21,8 +21,16 @@ module.exports = {
         }
 
         // Check if in session - separate command /end is used for this now
+        const session = db.getActiveSessionForUser(interaction.user.id);
+        if (session) {
+            return interaction.reply({
+                content: "You are currently in a chat session. Use `/end` to leave the chat.",
+                ephemeral: true
+            });
+        }
+
         return interaction.reply({
-            content: "You are not in the matchmaking queue. If you are in a chat, use `/end` to stop the session.",
+            content: "You are not in the matchmaking queue.",
             ephemeral: true
         });
     },
