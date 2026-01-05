@@ -95,7 +95,7 @@ module.exports = {
                 const { EmbedBuilder } = require('discord.js');
                 const shareEmbed = new EmbedBuilder()
                     .setTitle("ℹ️🤝 Username Shared")
-                    .setDescription(`Your chat partner has shared their Discord username with you:\n<@${interaction.user.id}> (\`${interaction.user.username}\`)\n\nFeel free to send them a friend request!`)
+                    .setDescription(`Your chat partner has shared their Discord username with you:\n\n<@${interaction.user.id}> (\`${interaction.user.username}\`)\n\nFeel free to send them a friend request!`)
                     .setColor(0x9b59b6) // Info color
                     .setTimestamp();
 
