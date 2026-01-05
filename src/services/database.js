@@ -4,7 +4,7 @@ const path = require('path');
 
 class DatabaseService {
     constructor() {
-        this.db = new Database(path.join(__dirname, '../blindbond.db'));
+        this.db = new Database(path.join(__dirname, '../../blindbond.db'));
         this.initSchema();
     }
 
