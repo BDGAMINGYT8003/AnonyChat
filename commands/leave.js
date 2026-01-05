@@ -20,21 +20,10 @@ module.exports = {
             });
         }
 
-        // Check if in session
-        const session = db.getActiveSessionForUser(interaction.user.id);
-        if (!session) {
-            return interaction.reply({
-                content: "You are not in an active chat or queue.",
-                ephemeral: true
-            });
-        }
-
-        // End session
-        await chatService.endChat(interaction.client, session.session_id, "User ended chat via command");
-
-        await interaction.reply({
-             embeds: [EmbedFactory.createSuccessEmbed("Chat Ended", "✅ Your chat has been ended successfully. Use `/new` when you're ready to find another chat partner!")],
-             ephemeral: true
+        // Check if in session - separate command /end is used for this now
+        return interaction.reply({
+            content: "You are not in the matchmaking queue. If you are in a chat, use `/end` to stop the session.",
+            ephemeral: true
         });
     },
 };

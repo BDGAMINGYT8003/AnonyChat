@@ -83,10 +83,21 @@ module.exports = {
             const partnerId = session.user1_id === interaction.user.id ? session.user2_id : session.user1_id;
             try {
                 const partner = await interaction.client.users.fetch(partnerId);
-                const shareEmbed = EmbedFactory.createInfoEmbed(
-                    "🤝 Username Shared",
-                    `Your chat partner has shared their Discord username with you:\n\n**${interaction.user.username}**\n\nFeel free to send them a friend request!`
-                );
+
+                // Formatted exactly as requested
+                // Title: ℹ️🤝 Username Shared
+                // Content: Your chat partner has shared their Discord username with you:
+                // <@User_ID> (`username`)
+                //
+                // Feel free to send them a friend request!
+                // Footer: Today at [timestamp]
+
+                const { EmbedBuilder } = require('discord.js');
+                const shareEmbed = new EmbedBuilder()
+                    .setTitle("ℹ️🤝 Username Shared")
+                    .setDescription(`Your chat partner has shared their Discord username with you:\n<@${interaction.user.id}> (\`${interaction.user.username}\`)\n\nFeel free to send them a friend request!`)
+                    .setColor(0x9b59b6) // Info color
+                    .setTimestamp();
 
                 await partner.send({ embeds: [shareEmbed] });
 
