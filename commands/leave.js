@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js');
 const db = require('../services/database');
 const matchmaking = require('../services/matchmaking');
+const chatService = require('../services/chat');
 const EmbedFactory = require('../utils/embeds');
 
 module.exports = {
@@ -29,21 +30,11 @@ module.exports = {
         }
 
         // End session
-        db.endChatSession(session.session_id);
+        await chatService.endChat(interaction.client, session.session_id, "User ended chat via command");
 
-        // Notify partner
-        const partnerId = session.user1_id === interaction.user.id ? session.user2_id : session.user1_id;
-
-        try {
-            const partner = await interaction.client.users.fetch(partnerId);
-            await partner.send({ embeds: [EmbedFactory.createChatEndedEmbed("Partner disconnected.")] });
-        } catch (e) {
-            // Partner might have blocked bot or left
-        }
-
-        await interaction.reply({ embeds: [EmbedFactory.createChatEndedEmbed("You ended the chat.")], ephemeral: true });
-
-        // Ask for feedback? (Optional)
-        // await interaction.user.send({ embeds: [EmbedFactory.createFeedbackEmbed()] });
+        await interaction.reply({
+             embeds: [EmbedFactory.createSuccessEmbed("Chat Ended", "✅ Your chat has been ended successfully. Use `/new` when you're ready to find another chat partner!")],
+             ephemeral: true
+        });
     },
 };

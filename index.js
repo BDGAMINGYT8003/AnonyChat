@@ -59,15 +59,62 @@ process.on('unhandledRejection', error => {
 });
 
 // Periodic tasks
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const chatService = require('./services/chat');
+
+// 1. Queue Monitor (Matchmaking + Broaden Search) - Runs every minute
+setInterval(async () => {
+    try {
+        // Broaden Search Prompt
+        const readyUsers = await matchmaking.getUsersReadyForBroadening();
+        for (const userId of readyUsers) {
+            try {
+                const user = await client.users.fetch(userId);
+                const embed = EmbedFactory.createInfoEmbed(
+                    "🔍 Still Searching...",
+                    "We haven't found a perfect match yet. Would you like to broaden your search criteria?"
+                ).addFields({ name: "Options", value: "• Wait for a better match\n• Broaden search to include other regions/ages\n• Leave queue with `/leave`" });
+
+                const row = new ActionRowBuilder().addComponents(
+                    new ButtonBuilder().setCustomId('broaden_search').setLabel('Broaden Search').setStyle(ButtonStyle.Primary).setEmoji('🌍'),
+                    new ButtonBuilder().setCustomId('broaden_wait').setLabel('Keep Waiting').setStyle(ButtonStyle.Secondary).setEmoji('⏳'),
+                    new ButtonBuilder().setCustomId('leave_queue').setLabel('Leave Queue').setStyle(ButtonStyle.Danger).setEmoji('❌')
+                );
+                await user.send({ embeds: [embed], components: [row] });
+            } catch (e) {
+                console.error(`Error sending queue update to user ${userId}:`, e);
+            }
+        }
+
+        // Process Matchmaking Queue
+        const matches = await matchmaking.processMatchmakingQueue();
+        if (matches && matches.length > 0) {
+            for (const match of matches) {
+                await chatService.startChatSession(
+                    client,
+                    match.user1.user_id,
+                    match.user2.user_id,
+                    match.user1.anonymous_id,
+                    match.user2.anonymous_id
+                );
+            }
+        }
+
+    } catch (error) {
+        console.error('Error in queue monitor:', error);
+    }
+}, 60 * 1000);
+
+// 2. Cleanup Stale Entries (Every 5 mins)
 setInterval(async () => {
     try {
         await matchmaking.cleanupStaleEntries();
     } catch (error) {
         console.error('Error in cleanup task:', error);
     }
-}, 5 * 60 * 1000); // Every 5 minutes
+}, 5 * 60 * 1000);
 
-// Activity monitor (30 min inactivity check)
+// 3. Activity Monitor (Every minute)
 const EmbedFactory = require('./utils/embeds');
 
 setInterval(async () => {
@@ -82,29 +129,13 @@ setInterval(async () => {
             const timeDiff = now - lastActivity;
 
             if (timeDiff > TIMEOUT_MS) {
-                // Timeout session
-                db.endChatSession(session.session_id);
-
-                // Notify users
-                try {
-                    const user1 = await client.users.fetch(session.user1_id);
-                    const user2 = await client.users.fetch(session.user2_id);
-                    const embed = EmbedFactory.createChatEndedEmbed("Session timed out due to inactivity.");
-
-                    await user1.send({ embeds: [embed] }).catch(() => {});
-                    await user2.send({ embeds: [embed] }).catch(() => {});
-                } catch (e) {
-                    console.error('Error notifying users of timeout:', e);
-                }
+                await chatService.endChat(client, session.session_id, "Session timed out due to inactivity.");
             } else if (timeDiff > WARNING_MS && !session.warning_sent) {
-                // Send Warning
                 db.markSessionWarningSent(session.session_id);
-
                 try {
                     const user1 = await client.users.fetch(session.user1_id);
                     const user2 = await client.users.fetch(session.user2_id);
                     const embed = EmbedFactory.createIdleWarningEmbed();
-
                     await user1.send({ embeds: [embed] }).catch(() => {});
                     await user2.send({ embeds: [embed] }).catch(() => {});
                 } catch (e) {
@@ -115,7 +146,24 @@ setInterval(async () => {
     } catch (error) {
         console.error('Error in activity monitor:', error);
     }
-}, 60 * 1000); // Check every minute
+}, 60 * 1000);
+
+// 4. Status Rotator (Every 5 mins)
+const statusMessages = [
+    "Connecting hearts anonymously 💕",
+    "Use /new to find someone to chat with!",
+    "Making new friendships one chat at a time",
+    "Your privacy is our priority 🔒",
+    "Building bridges through conversation"
+];
+let statusIndex = 0;
+
+setInterval(async () => {
+    if (client.user) {
+        client.user.setActivity(statusMessages[statusIndex], { type: 3 }); // Watching
+        statusIndex = (statusIndex + 1) % statusMessages.length;
+    }
+}, 5 * 60 * 1000);
 
 // Login
 if (!process.env.DISCORD_TOKEN) {

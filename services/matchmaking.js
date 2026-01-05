@@ -226,6 +226,98 @@ class MatchmakingService {
             this.releaseLock();
         }
     }
+
+    async getUsersReadyForBroadening() {
+        await this.acquireLock();
+        try {
+            const now = new Date();
+            const readyUsers = [];
+
+            for (const entry of this.queue) {
+                const waitTime = (now - entry.joinedAt) / 1000; // seconds
+                if (waitTime > MAX_QUEUE_WAIT_TIME &&
+                    !entry.broadenedSearch &&
+                    (!entry.lastUpdateSent || (now - entry.lastUpdateSent) > 300000)) { // 5 min
+
+                    readyUsers.push(entry.userId);
+                    entry.lastUpdateSent = now;
+                }
+            }
+            return readyUsers;
+        } finally {
+            this.releaseLock();
+        }
+    }
+
+    async processQueue() {
+        await this.acquireLock();
+        try {
+            if (this.queue.length < 2) return null;
+
+            // Iterate over a copy to safely modify queue
+            const queueCopy = [...this.queue];
+            const matches = [];
+
+            // We need to be careful not to match users who have already been matched in this pass
+            const matchedUserIds = new Set();
+
+            for (const entry of queueCopy) {
+                if (matchedUserIds.has(entry.userId)) continue;
+
+                // findMatch logic (duplicated slightly to handle internal locking/state safely)
+                // Actually, calling this.findMatch inside processQueue is tricky because findMatch acquires lock.
+                // We are already holding lock.
+                // We should refactor findMatch to separate internal logic from locking logic,
+                // OR release lock momentarily (risky).
+                // Better: Create _findMatchInternal that assumes lock is held.
+            }
+        } finally {
+            this.releaseLock();
+        }
+        // Since refactoring `findMatch` is invasive, let's just use the fact that `findMatch` logic is
+        // essentially: "Take User A, check against rest of queue".
+        // If we iterate the queue in `index.js` and call `findMatch`, it works, BUT `findMatch` locks.
+        // So we can't iterate while holding lock.
+        // But `index.js` doesn't hold lock.
+        // So `index.js` can just call `processQueue` which releases lock between attempts?
+        // No, `processQueue` is atomic.
+
+        // Let's implement `processQueue` that returns a list of matched pairs,
+        // removing them from queue internally.
+
+        return null;
+    }
+
+    // Revised strategy: Add a method that doesn't lock for internal use, or
+    // just implement a loop that tries to match everyone.
+
+    async processMatchmakingQueue() {
+         // This method will try to match everyone in the queue.
+         // Since `findMatch` removes users on success, we can just keep trying until no matches found or list exhausted.
+         // However, `findMatch` is optimized for "find match for User X".
+         // We can iterate through a snapshot of userIDs.
+
+         const snapshot = await this.getQueueSnapshot();
+         const matches = [];
+
+         for (const userId of snapshot) {
+             // Check if still in queue (findMatch handles this check)
+             const result = await this.findMatch(userId);
+             if (result) {
+                 matches.push(result);
+             }
+         }
+         return matches;
+    }
+
+    async getQueueSnapshot() {
+        await this.acquireLock();
+        try {
+            return this.queue.map(e => e.userId);
+        } finally {
+            this.releaseLock();
+        }
+    }
 }
 
 module.exports = new MatchmakingService();

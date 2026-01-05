@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const db = require('../services/database');
 const matchmaking = require('../services/matchmaking');
 const safety = require('../services/safety');
+const chatService = require('../services/chat');
 const EmbedFactory = require('../utils/embeds');
 
 module.exports = {
@@ -68,25 +69,13 @@ module.exports = {
             const match = await matchmaking.findMatch(userId);
 
             if (match) {
-                // Create Session
-                const sessionId = db.createChatSession(
+                await chatService.startChatSession(
+                    client,
                     match.user1.user_id,
                     match.user2.user_id,
                     match.user1.anonymous_id,
                     match.user2.anonymous_id
                 );
-
-                // Notify both users
-                const user1 = await client.users.fetch(match.user1.user_id);
-                const user2 = await client.users.fetch(match.user2.user_id);
-
-                const embed = EmbedFactory.createMatchFoundEmbed(sessionId);
-
-                await user1.send({ embeds: [embed] }).catch(() => {});
-                await user2.send({ embeds: [embed] }).catch(() => {});
-
-                // If user triggered this via slash command, update their interaction
-                // (Though they might have received a DM already)
             }
         } catch (error) {
             console.error("Matchmaking error:", error);

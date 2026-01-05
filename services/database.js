@@ -35,7 +35,8 @@ class DatabaseService {
                 started_at TEXT,
                 last_activity TEXT,
                 is_active INTEGER DEFAULT 1,
-                warning_sent INTEGER DEFAULT 0
+                warning_sent INTEGER DEFAULT 0,
+                message_count INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS block_list (
@@ -145,8 +146,8 @@ class DatabaseService {
 
         const stmt = this.db.prepare(`
             INSERT INTO chat_sessions
-            (session_id, user1_id, user2_id, user1_anonymous_id, user2_anonymous_id, started_at, last_activity, warning_sent)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+            (session_id, user1_id, user2_id, user1_anonymous_id, user2_anonymous_id, started_at, last_activity, warning_sent, message_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0)
         `);
 
         stmt.run(sessionId, String(user1Id), String(user2Id), user1Anon, user2Anon, now, now);
@@ -180,6 +181,11 @@ class DatabaseService {
         // Also reset warning_sent if activity happens
         const stmt = this.db.prepare('UPDATE chat_sessions SET last_activity = ?, warning_sent = 0 WHERE session_id = ?');
         stmt.run(now, sessionId);
+    }
+
+    incrementMessageCount(sessionId) {
+        const stmt = this.db.prepare('UPDATE chat_sessions SET message_count = message_count + 1 WHERE session_id = ?');
+        stmt.run(sessionId);
     }
 
     endChatSession(sessionId) {
