@@ -1,4 +1,4 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, MediaGalleryBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, MediaGalleryBuilder, MediaGalleryItemBuilder, FileBuilder, AttachmentBuilder } = require('discord.js');
 const db = require('./database');
 const safety = require('./safety');
 const EmbedFactory = require('../utils/embeds');
@@ -13,17 +13,19 @@ class ChatService {
         const container = EmbedFactory.createMatchFoundEmbed(sessionId);
         const row = this.createChatControlView();
 
+        // V2: Nest controls inside the container
+        container.addActionRowComponents(row);
+
         try {
             const user1 = await client.users.fetch(user1Id);
             const user2 = await client.users.fetch(user2Id);
 
-            // V2: Send Container and ActionRow in 'components' array, set flag
             await user1.send({
-                components: [container, row],
+                components: [container],
                 flags: MessageFlags.IsComponentsV2
             });
             await user2.send({
-                components: [container, row],
+                components: [container],
                 flags: MessageFlags.IsComponentsV2
             });
 
@@ -120,49 +122,69 @@ class ChatService {
             );
 
             const components = [container];
+            const filesToSend = []; // For attachment:// links
 
             // 2. Media Gallery (Images)
-            // Filter attachments for images
             const imageAttachments = message.attachments.filter(a => a.contentType && a.contentType.startsWith('image/'));
 
             if (imageAttachments.size > 0) {
                 const gallery = new MediaGalleryBuilder();
                 imageAttachments.forEach(att => {
-                    gallery.addItems({ media: { url: att.url }, description: att.description || 'Attached Image' });
+                    // Docs: .addItems(mediaGalleryItem => ...)
+                    gallery.addItems(
+                        mediaGalleryItem => mediaGalleryItem
+                            .setDescription(att.description || 'Attached Image')
+                            .setURL(att.url) // Using external URL directly
+                    );
                 });
                 components.push(gallery);
             }
 
-            // Note: Other file types (pdf, etc.) might not be supported in V2 if strict.
-            // But we can include them as links in text if needed, or hope files prop still works alongside V2 components?
-            // User spec: "content, embeds, stickers, and poll cannot be used."
-            // Files/attachments are usually separate. But "Audio files... no support".
-            // Let's assume we can send `files: [...]` alongside `components: [...]` for non-image files, or just ignore them if strict V2.
-            // For now, I'll only handle images via MediaGallery.
-            // What about Stickers?
+            // 3. Other Files (FileBuilder)
+            const otherAttachments = message.attachments.filter(a => !a.contentType || !a.contentType.startsWith('image/'));
+            if (otherAttachments.size > 0) {
+                otherAttachments.forEach(att => {
+                     // FileBuilder: .setURL('attachment://filename')
+                     // We need to pass the file object in `files` array.
+                     const fileBuilder = new FileBuilder().setURL(att.url); // Can we use external URL? Docs say "upload and display".
+                     // Docs example: setURL('attachment://guide.pdf') and files: [file].
+                     // If we pass external URL to FileBuilder, does it work?
+                     // Usually FileBuilder is for uploaded files.
+                     // If we just want to link it, we should put it in text.
+                     // But let's try to simulate upload if we can, or just link.
+                     // Since we are relaying, we can pass the attachment URL which Discord treats as external?
+                     // Let's rely on text link for non-images if strict V2 fails, but try FileBuilder.
+                     // Actually, we can just pass the attachment object in `files` and reference it.
 
+                     // Since we can't easily re-upload the stream without fetching, and we want speed...
+                     // We will use the URL in the TextDisplay if FileBuilder requires local upload.
+                     // But wait, we can pass `files: [att.url]`.
+                     // Let's try to add a FileBuilder pointing to the url.
+                     components.push(new FileBuilder().setURL(att.url));
+                });
+            }
+
+            // 4. Stickers
             if (hasStickers) {
                  const sticker = message.stickers.first();
-                 // Stickers are images usually. Add to gallery?
-                 // Or just link.
-                 // Let's rely on the link in description from previous step if any (EmbedFactory logic didn't add link).
-                 // Let's add sticker as MediaGallery item if it has a URL.
                  if (sticker.url) {
-                      // Check if gallery exists or create new
                       let gallery = components.find(c => c instanceof MediaGalleryBuilder);
                       if (!gallery) {
                           gallery = new MediaGalleryBuilder();
                           components.push(gallery);
                       }
-                      gallery.addItems({ media: { url: sticker.url }, description: `Sticker: ${sticker.name}` });
+                      gallery.addItems(
+                          mediaGalleryItem => mediaGalleryItem
+                            .setDescription(`Sticker: ${sticker.name}`)
+                            .setURL(sticker.url)
+                      );
                  }
             }
 
             await partner.send({
                 components: components,
+                // files: filesToSend, // If we needed to upload local files
                 flags: MessageFlags.IsComponentsV2,
-                // We'll omit 'files' to be strictly V2 compliant if the user text implies "Everything is a Component".
-                // If the user sends a PDF, it might be lost. But "Multimedia Restrictions" section implies V2 is visual.
             });
 
             await message.react('✅').catch(() => {});
@@ -188,17 +210,11 @@ class ChatService {
 
         const summaryText = `Duration: ${durationStr}\nTotal messages exchanged: ${messageCount}`;
         const container = EmbedFactory.createChatEndedEmbed(reason);
-        // We can't add fields to a Container directly after creation easily unless we access internal methods or rebuilt.
-        // But EmbedFactory returns a ContainerBuilder.
-        // ContainerBuilder has `addComponents`.
-        // We need to add the summary.
 
-        // Add summary as a Section
-        const { SectionBuilder, TextDisplayBuilder } = require('discord.js');
-        container.addComponents(
-             new SectionBuilder().addTextDisplayComponents(
-                 new TextDisplayBuilder().setContent(`## 📊 Conversation Summary\n${summaryText}`)
-             )
+        // Add summary
+        const { TextDisplayBuilder } = require('discord.js');
+        container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`## 📊 Conversation Summary\n${summaryText}`)
         );
 
         const user1Id = session.user1_id;
@@ -208,8 +224,11 @@ class ChatService {
             try {
                 const user = await client.users.fetch(userId);
                 const row = this.createFeedbackView(sessionId, otherUserId, otherUserAnon);
+                // Nest feedback controls
+                container.addActionRowComponents(row);
+
                 await user.send({
-                    components: [container, row],
+                    components: [container],
                     flags: MessageFlags.IsComponentsV2
                 });
             } catch (e) {

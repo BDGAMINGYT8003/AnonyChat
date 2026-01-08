@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle, MessageFlags, TextDisplayBuilder } = require('discord.js');
 const db = require('../services/database');
 const EmbedFactory = require('../utils/embeds');
 
@@ -8,11 +8,9 @@ module.exports = {
         .setDescription('Set up your profile for BlindBond'),
 
     async execute(interaction) {
-        // Check if user already exists
         let profile = db.getUserProfile(interaction.user.id);
 
         if (!profile) {
-            // Create new profile
             db.createUserProfile(interaction.user.id);
             profile = db.getUserProfile(interaction.user.id);
         }
@@ -25,7 +23,6 @@ module.exports = {
             });
         }
 
-        // Start onboarding wizard (Gender selection)
         await this.sendGenderSelection(interaction);
     },
 
@@ -44,23 +41,17 @@ module.exports = {
             );
 
         const container = EmbedFactory.createWelcomeEmbed();
-        // createWelcomeEmbed returns a ContainerBuilder.
-        // We can create a new container that includes the instruction.
-        // Or modify the existing logic in EmbedFactory to include it or just rely on the selection menu context.
-        // Let's create a wrapper container or just send the welcome embed.
-        // Wait, "To get started..." description.
-        // I'll add a TextDisplay to the container.
-        const { TextDisplayBuilder } = require('discord.js');
-        container.addComponents(new TextDisplayBuilder().setContent("To get started, please select your gender:"));
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent("To get started, please select your gender:"));
+        container.addActionRowComponents(row);
 
         if (interaction.replied || interaction.deferred) {
             await interaction.editReply({
-                components: [container, row],
+                components: [container],
                 flags: MessageFlags.IsComponentsV2
             });
         } else {
             await interaction.reply({
-                components: [container, row],
+                components: [container],
                 flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
@@ -85,7 +76,6 @@ module.exports = {
             profile.gender = gender;
             db.updateUserProfile(profile);
 
-            // Ask for age via Modal
             const modal = new ModalBuilder()
                 .setCustomId('onboard_age_modal')
                 .setTitle('Enter Your Age');
@@ -117,7 +107,6 @@ module.exports = {
             profile.age = age;
             db.updateUserProfile(profile);
 
-            // Ask for location via Select
             const row = new ActionRowBuilder()
                 .addComponents(
                     new StringSelectMenuBuilder()
@@ -134,9 +123,10 @@ module.exports = {
                 );
 
             const container = EmbedFactory.createSuccessEmbed("Age Saved", `✅ Age saved: ${age}. Now select your region:`);
+            container.addActionRowComponents(row);
 
             await interaction.reply({
-                components: [container, row],
+                components: [container],
                 flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
@@ -145,7 +135,6 @@ module.exports = {
             profile.location = location;
             db.updateUserProfile(profile);
 
-            // Ask for interested_in
              const row = new ActionRowBuilder()
                 .addComponents(
                     new StringSelectMenuBuilder()
@@ -159,9 +148,10 @@ module.exports = {
                 );
 
             const container = EmbedFactory.createSuccessEmbed("Region Saved", `✅ Region saved: ${location}. Who are you interested in chatting with?`);
+            container.addActionRowComponents(row);
 
             await interaction.update({
-                components: [container, row],
+                components: [container],
                 flags: MessageFlags.IsComponentsV2
             });
         } else if (customId === 'onboard_interested_in_select') {
@@ -169,7 +159,6 @@ module.exports = {
             profile.interested_in = interestedIn;
             db.updateUserProfile(profile);
 
-            // Ask for interests via Modal (comma separated)
              const modal = new ModalBuilder()
                 .setCustomId('onboard_interests_modal')
                 .setTitle('Your Interests');

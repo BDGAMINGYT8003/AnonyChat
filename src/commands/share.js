@@ -18,7 +18,6 @@ module.exports = {
             });
         }
 
-        // Check cooldown/limits
         const shareData = db.getShareData(session.session_id, interaction.user.id);
 
         if (shareData.count >= 2) {
@@ -41,7 +40,6 @@ module.exports = {
             }
         }
 
-        // Confirmation
         const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
@@ -57,10 +55,11 @@ module.exports = {
             );
 
         const container = EmbedFactory.createContainer(EmbedFactory.WARNING_COLOR);
-        container.addComponents(new TextDisplayBuilder().setContent("Are you sure you want to reveal your Discord username to your partner?"));
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent("Are you sure you want to reveal your Discord username to your partner?"));
+        container.addActionRowComponents(row);
 
         await interaction.reply({
-            components: [container, row],
+            components: [container],
             flags: MessageFlags.IsComponentsV2,
             ephemeral: true
         });
@@ -86,7 +85,6 @@ module.exports = {
                 });
             }
 
-            // Double check limits
              const shareData = db.getShareData(session.session_id, interaction.user.id);
              if (shareData.count >= 2) {
                  return interaction.followup({
@@ -96,25 +94,25 @@ module.exports = {
                  });
              }
 
-            // Record share
             db.recordUsernameShare(session.session_id, interaction.user.id);
 
-            // Send to partner
             const partnerId = session.user1_id === interaction.user.id ? session.user2_id : session.user1_id;
             try {
                 const partner = await interaction.client.users.fetch(partnerId);
 
-                // Recreate the specific layout requested in V2
                 const shareContainer = EmbedFactory.createContainer(0x9b59b6);
-                shareContainer.addComponents(
-                    new TextDisplayBuilder().setContent("# ℹ️🤝 Username Shared\nYour chat partner has shared their Discord username with you:"),
-                    new SeparatorBuilder(),
-                    // Use a quote block pattern if TextDisplay supports markdown quote, or just a Section
-                    new SectionBuilder().addTextDisplayComponents(
-                        new TextDisplayBuilder().setContent(`> <@${interaction.user.id}> (\`${interaction.user.username}\`)`)
-                    ),
-                    new TextDisplayBuilder().setContent("\n\nFeel free to send them a friend request!"),
-                    new SeparatorBuilder(),
+                shareContainer.addTextDisplayComponents(
+                    new TextDisplayBuilder().setContent("# ℹ️🤝 Username Shared\nYour chat partner has shared their Discord username with you:")
+                );
+                shareContainer.addSeparatorComponents(new SeparatorBuilder());
+                // Section without accessory is invalid? But user requested specific quote format.
+                // "Use a blockquote (>) before the user mention, use double-newline spacing..."
+                // I can just use TextDisplay with markdown quote.
+                shareContainer.addTextDisplayComponents(
+                        new TextDisplayBuilder().setContent(`> <@${interaction.user.id}> (\`${interaction.user.username}\`)\n\nFeel free to send them a friend request!`)
+                );
+                shareContainer.addSeparatorComponents(new SeparatorBuilder());
+                shareContainer.addTextDisplayComponents(
                     new TextDisplayBuilder().setContent(`*Today at ${new Date().toLocaleTimeString()}*`)
                 );
 

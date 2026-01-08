@@ -36,8 +36,11 @@ module.exports = {
                     .setStyle(ButtonStyle.Secondary),
             );
 
+        // V2: Nest components
+        container.addActionRowComponents(row);
+
         await interaction.reply({
-            components: [container, row],
+            components: [container],
             flags: MessageFlags.IsComponentsV2,
             ephemeral: true
         });
@@ -64,10 +67,11 @@ module.exports = {
                 );
 
             const container = EmbedFactory.createContainer();
-            container.addComponents(new TextDisplayBuilder().setContent("Select new gender:"));
+            container.addTextDisplayComponents(new TextDisplayBuilder().setContent("Select new gender:"));
+            container.addActionRowComponents(row);
 
             await interaction.reply({
-                components: [container, row],
+                components: [container],
                 flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });

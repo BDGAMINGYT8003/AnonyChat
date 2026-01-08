@@ -78,8 +78,12 @@ module.exports = {
                         const partnerId = session.user1_id === interaction.user.id ? session.user2_id : session.user1_id;
                         const partnerAnon = session.user1_id === interaction.user.id ? session.user2_anonymous_id : session.user1_anonymous_id;
                         const result = await chatService.blockUser(interaction.client, interaction.user.id, partnerId, partnerAnon, true);
+
+                        const container = EmbedFactory.createContainer(EmbedFactory.ERROR_COLOR);
+                        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`🚨 ${result}`));
+
                         await interaction.editReply({
-                            components: [EmbedFactory.createContainer(EmbedFactory.ERROR_COLOR).addComponents(new TextDisplayBuilder().setContent(`🚨 ${result}`))],
+                            components: [container],
                             flags: MessageFlags.IsComponentsV2
                         });
                     } else {
@@ -100,10 +104,11 @@ module.exports = {
                         );
 
                         const container = EmbedFactory.createContainer(EmbedFactory.SUCCESS_COLOR);
-                        container.addComponents(new TextDisplayBuilder().setContent("✅ Thanks for the feedback! Would you like to connect with this person outside of anonymous chat?"));
+                        container.addTextDisplayComponents(new TextDisplayBuilder().setContent("✅ Thanks for the feedback! Would you like to connect with this person outside of anonymous chat?"));
+                        container.addActionRowComponents(row);
 
                         await interaction.reply({
-                            components: [container, row],
+                            components: [container],
                             flags: MessageFlags.IsComponentsV2,
                             ephemeral: true
                         });
@@ -173,8 +178,12 @@ module.exports = {
                     const [_, blockedUserId, blockedAnon] = customId.split(':');
                     await interaction.deferReply({ ephemeral: true });
                     const result = await chatService.blockUser(interaction.client, interaction.user.id, blockedUserId, blockedAnon, false);
+
+                    const container = EmbedFactory.createContainer(EmbedFactory.ERROR_COLOR);
+                    container.addTextDisplayComponents(new TextDisplayBuilder().setContent(`🚫 ${result}`));
+
                     await interaction.editReply({
-                        components: [EmbedFactory.createContainer(EmbedFactory.ERROR_COLOR).addComponents(new TextDisplayBuilder().setContent(`🚫 ${result}`))],
+                        components: [container],
                         flags: MessageFlags.IsComponentsV2
                     });
                 } else if (customId.startsWith('chat_report_end:')) {

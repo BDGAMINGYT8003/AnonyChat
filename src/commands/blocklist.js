@@ -19,20 +19,18 @@ module.exports = {
         }
 
         const container = EmbedFactory.createContainer(0xff6b6b);
-        container.addComponents(
-            new TextDisplayBuilder().setContent(`# 🚫 Your Blocked Users\nYou have blocked ${blockedUsers.length} users:`),
-            new SeparatorBuilder()
+        container.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`# 🚫 Your Blocked Users\nYou have blocked ${blockedUsers.length} users:`)
         );
+        container.addSeparatorComponents(new SeparatorBuilder());
 
-        const section = new SectionBuilder();
-        blockedUsers.slice(0, 10).forEach((anonId, i) => {
-            section.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**User ${i + 1}**: \`${anonId.substring(0, 8)}...\``));
-        });
-        container.addComponents(section);
+        // Use TextDisplay instead of Section as we don't have accessories
+        const listText = blockedUsers.slice(0, 10).map((anonId, i) => `**User ${i + 1}**: \`${anonId.substring(0, 8)}...\``).join("\n");
+        container.addTextDisplayComponents(new TextDisplayBuilder().setContent(listText));
 
         if (blockedUsers.length > 10) {
-            container.addComponents(
-                new SeparatorBuilder(),
+            container.addSeparatorComponents(new SeparatorBuilder());
+            container.addTextDisplayComponents(
                 new TextDisplayBuilder().setContent(`*Showing first 10 of ${blockedUsers.length} blocked users*`)
             );
         }
@@ -51,8 +49,10 @@ module.exports = {
                     .addOptions(options)
             );
 
+        container.addActionRowComponents(row);
+
         await interaction.reply({
-            components: [container, row],
+            components: [container],
             flags: MessageFlags.IsComponentsV2,
             ephemeral: true
         });
