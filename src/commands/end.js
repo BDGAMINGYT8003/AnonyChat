@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const db = require('../services/database');
 const chatService = require('../services/chat');
 const EmbedFactory = require('../utils/embeds');
@@ -13,7 +13,8 @@ module.exports = {
         const session = db.getActiveSessionForUser(interaction.user.id);
         if (!session) {
             return interaction.reply({
-                content: "You are not in an active chat session.",
+                components: [EmbedFactory.createErrorEmbed("No Active Session", "You are not in an active chat session.")],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         }
@@ -23,12 +24,14 @@ module.exports = {
 
         if (success) {
             await interaction.reply({
-                embeds: [EmbedFactory.createSuccessEmbed("Chat Ended", "✅ Your chat has been ended successfully. Use `/new` when you're ready to find another chat partner!")],
+                components: [EmbedFactory.createSuccessEmbed("Chat Ended", "✅ Your chat has been ended successfully. Use `/new` when you're ready to find another chat partner!")],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         } else {
             await interaction.reply({
-                content: "❌ Could not end chat - session may already be ended.",
+                components: [EmbedFactory.createErrorEmbed("Error", "Could not end chat - session may already be ended.")],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         }

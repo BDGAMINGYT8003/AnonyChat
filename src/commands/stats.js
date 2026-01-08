@@ -1,6 +1,7 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags, TextDisplayBuilder, SectionBuilder } = require('discord.js');
 const matchmaking = require('../services/matchmaking');
 const db = require('../services/database');
+const EmbedFactory = require('../utils/embeds');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -9,18 +10,26 @@ module.exports = {
 
     async execute(interaction) {
         const queueStats = matchmaking.getQueueStats();
-        const activeSessions = db.getActiveSessions(); // This method returns array
+        const activeSessions = db.getActiveSessions();
         const activeChats = activeSessions.length;
 
-        const embed = new EmbedBuilder()
-            .setTitle("📊 Bot Statistics")
-            .setColor(0x3498db)
-            .addFields(
-                { name: "Users in Queue", value: `${queueStats.total}`, inline: true },
-                { name: "Active Chats", value: `${activeChats}`, inline: true },
-                { name: "Average Wait Time", value: `${queueStats.avgWaitTime.toFixed(1)} min`, inline: true }
-            );
+        const container = EmbedFactory.createContainer(0x3498db);
+        container.addComponents(
+             new TextDisplayBuilder().setContent("# 📊 Bot Statistics")
+        );
 
-        await interaction.reply({ embeds: [embed], ephemeral: true });
+        const section = new SectionBuilder();
+        section.addTextDisplayComponents(
+            new TextDisplayBuilder().setContent(`**Users in Queue**: ${queueStats.total}`),
+            new TextDisplayBuilder().setContent(`**Active Chats**: ${activeChats}`),
+            new TextDisplayBuilder().setContent(`**Average Wait Time**: ${queueStats.avgWaitTime.toFixed(1)} min`)
+        );
+        container.addComponents(section);
+
+        await interaction.reply({
+            components: [container],
+            flags: MessageFlags.IsComponentsV2,
+            ephemeral: true
+        });
     },
 };

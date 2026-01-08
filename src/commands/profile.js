@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags, TextDisplayBuilder } = require('discord.js');
 const db = require('../services/database');
 const EmbedFactory = require('../utils/embeds');
 
@@ -12,12 +12,13 @@ module.exports = {
 
         if (!profile || !profile.is_onboarded) {
             return interaction.reply({
-                content: "You haven't set up your profile yet. Use `/onboard` to get started!",
+                components: [EmbedFactory.createInfoEmbed("Profile Missing", "You haven't set up your profile yet. Use `/onboard` to get started!")],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         }
 
-        const embed = EmbedFactory.createProfileEmbed(profile, true);
+        const container = EmbedFactory.createProfileEmbed(profile, true);
 
         const row = new ActionRowBuilder()
             .addComponents(
@@ -35,7 +36,11 @@ module.exports = {
                     .setStyle(ButtonStyle.Secondary),
             );
 
-        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+        await interaction.reply({
+            components: [container, row],
+            flags: MessageFlags.IsComponentsV2,
+            ephemeral: true
+        });
     },
 
     async handleInteraction(interaction) {
@@ -57,12 +62,25 @@ module.exports = {
                             { label: 'Other', value: 'Other' },
                         ),
                 );
-            await interaction.reply({ content: "Select new gender:", components: [row], ephemeral: true });
+
+            const container = EmbedFactory.createContainer();
+            container.addComponents(new TextDisplayBuilder().setContent("Select new gender:"));
+
+            await interaction.reply({
+                components: [container, row],
+                flags: MessageFlags.IsComponentsV2,
+                ephemeral: true
+            });
 
         } else if (customId === 'profile_update_gender_select') {
             profile.gender = interaction.values[0];
             db.updateUserProfile(profile);
-            await interaction.update({ content: `✅ Gender updated to: ${profile.gender}`, components: [] });
+
+            const container = EmbedFactory.createSuccessEmbed("Updated", `✅ Gender updated to: ${profile.gender}`);
+            await interaction.update({
+                components: [container],
+                flags: MessageFlags.IsComponentsV2
+            });
 
         } else if (customId === 'profile_edit_age') {
             const modal = new ModalBuilder()
@@ -86,12 +104,21 @@ module.exports = {
             const age = parseInt(ageStr);
 
             if (isNaN(age) || age < 13 || age > 99) {
-                return interaction.reply({ content: "❌ Invalid age.", ephemeral: true });
+                return interaction.reply({
+                    components: [EmbedFactory.createErrorEmbed("Invalid Age", "❌ Invalid age.")],
+                    flags: MessageFlags.IsComponentsV2,
+                    ephemeral: true
+                });
             }
 
             profile.age = age;
             db.updateUserProfile(profile);
-            await interaction.reply({ content: `✅ Age updated to: ${age}`, ephemeral: true });
+
+            await interaction.reply({
+                components: [EmbedFactory.createSuccessEmbed("Updated", `✅ Age updated to: ${age}`)],
+                flags: MessageFlags.IsComponentsV2,
+                ephemeral: true
+            });
 
         } else if (customId === 'profile_edit_interests') {
              const modal = new ModalBuilder()
@@ -113,7 +140,12 @@ module.exports = {
 
             profile.interests = interests;
             db.updateUserProfile(profile);
-            await interaction.reply({ content: "✅ Interests updated.", ephemeral: true });
+
+            await interaction.reply({
+                components: [EmbedFactory.createSuccessEmbed("Updated", "✅ Interests updated.")],
+                flags: MessageFlags.IsComponentsV2,
+                ephemeral: true
+            });
         }
     }
 };

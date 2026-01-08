@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, TextDisplayBuilder, SectionBuilder, SeparatorBuilder } = require('discord.js');
 const db = require('../services/database');
 const EmbedFactory = require('../utils/embeds');
 
@@ -12,7 +12,8 @@ module.exports = {
 
         if (!session) {
             return interaction.reply({
-                content: "You are not in an active chat.",
+                components: [EmbedFactory.createErrorEmbed("No Active Chat", "You are not in an active chat.")],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         }
@@ -21,14 +22,22 @@ module.exports = {
         const shareData = db.getShareData(session.session_id, interaction.user.id);
 
         if (shareData.count >= 2) {
-            return interaction.reply({ content: "❌ You have reached the limit of 2 shares per session.", ephemeral: true });
+            return interaction.reply({
+                components: [EmbedFactory.createErrorEmbed("Limit Reached", "❌ You have reached the limit of 2 shares per session.")],
+                flags: MessageFlags.IsComponentsV2,
+                ephemeral: true
+            });
         }
 
         if (shareData.last_share) {
             const now = new Date();
             const timeDiff = (now - shareData.last_share) / 1000; // seconds
             if (timeDiff < 60) {
-                return interaction.reply({ content: `Please wait ${Math.ceil(60 - timeDiff)} seconds before sharing again.`, ephemeral: true });
+                return interaction.reply({
+                    components: [EmbedFactory.createErrorEmbed("Cooldown", `Please wait ${Math.ceil(60 - timeDiff)} seconds before sharing again.`)],
+                    flags: MessageFlags.IsComponentsV2,
+                    ephemeral: true
+                });
             }
         }
 
@@ -47,9 +56,12 @@ module.exports = {
                     .setEmoji('❌')
             );
 
+        const container = EmbedFactory.createContainer(EmbedFactory.WARNING_COLOR);
+        container.addComponents(new TextDisplayBuilder().setContent("Are you sure you want to reveal your Discord username to your partner?"));
+
         await interaction.reply({
-            content: "Are you sure you want to reveal your Discord username to your partner?",
-            components: [row],
+            components: [container, row],
+            flags: MessageFlags.IsComponentsV2,
             ephemeral: true
         });
     },
@@ -58,8 +70,8 @@ module.exports = {
         const { customId } = interaction;
 
         if (customId === 'share_cancel') {
-            const embed = EmbedFactory.createInfoEmbed("Cancelled", "Username sharing cancelled. Your privacy remains protected.");
-            return interaction.update({ content: null, embeds: [embed], components: [] });
+            const container = EmbedFactory.createInfoEmbed("Cancelled", "Username sharing cancelled. Your privacy remains protected.");
+            return interaction.update({ components: [container], flags: MessageFlags.IsComponentsV2 });
         }
 
         if (customId === 'share_confirm') {
@@ -67,13 +79,21 @@ module.exports = {
 
             const session = db.getActiveSessionForUser(interaction.user.id);
             if (!session) {
-                return interaction.followup({ content: "Chat session not found.", ephemeral: true });
+                return interaction.followup({
+                    components: [EmbedFactory.createErrorEmbed("Error", "Chat session not found.")],
+                    flags: MessageFlags.IsComponentsV2,
+                    ephemeral: true
+                });
             }
 
             // Double check limits
              const shareData = db.getShareData(session.session_id, interaction.user.id);
              if (shareData.count >= 2) {
-                 return interaction.followup({ content: "❌ Limit reached.", ephemeral: true });
+                 return interaction.followup({
+                     components: [EmbedFactory.createErrorEmbed("Limit Reached", "❌ Limit reached.")],
+                     flags: MessageFlags.IsComponentsV2,
+                     ephemeral: true
+                 });
              }
 
             // Record share
@@ -84,29 +104,35 @@ module.exports = {
             try {
                 const partner = await interaction.client.users.fetch(partnerId);
 
-                // Formatted exactly as requested
-                // Title: ℹ️🤝 Username Shared
-                // Content: Your chat partner has shared their Discord username with you:
-                // <@User_ID> (`username`)
-                //
-                // Feel free to send them a friend request!
-                // Footer: Today at [timestamp]
+                // Recreate the specific layout requested in V2
+                const shareContainer = EmbedFactory.createContainer(0x9b59b6);
+                shareContainer.addComponents(
+                    new TextDisplayBuilder().setContent("# ℹ️🤝 Username Shared\nYour chat partner has shared their Discord username with you:"),
+                    new SeparatorBuilder(),
+                    // Use a quote block pattern if TextDisplay supports markdown quote, or just a Section
+                    new SectionBuilder().addTextDisplayComponents(
+                        new TextDisplayBuilder().setContent(`> <@${interaction.user.id}> (\`${interaction.user.username}\`)`)
+                    ),
+                    new TextDisplayBuilder().setContent("\n\nFeel free to send them a friend request!"),
+                    new SeparatorBuilder(),
+                    new TextDisplayBuilder().setContent(`*Today at ${new Date().toLocaleTimeString()}*`)
+                );
 
-                const { EmbedBuilder } = require('discord.js');
-                const shareEmbed = new EmbedBuilder()
-                    .setTitle("ℹ️🤝 Username Shared")
-                    .setDescription(`Your chat partner has shared their Discord username with you:\n\n> <@${interaction.user.id}> (\`${interaction.user.username}\`)\n\nFeel free to send them a friend request!`)
-                    .setColor(0x9b59b6) // Info color
-                    .setTimestamp();
+                await partner.send({
+                    components: [shareContainer],
+                    flags: MessageFlags.IsComponentsV2
+                });
 
-                await partner.send({ embeds: [shareEmbed] });
-
-                const successEmbed = EmbedFactory.createSuccessEmbed("Username Shared", "✅ Your username has been shared with your chat partner!");
-                await interaction.editReply({ content: null, embeds: [successEmbed], components: [] });
+                const successContainer = EmbedFactory.createSuccessEmbed("Username Shared", "✅ Your username has been shared with your chat partner!");
+                await interaction.editReply({ components: [successContainer], flags: MessageFlags.IsComponentsV2 });
 
             } catch (error) {
                 console.error("Share error:", error);
-                await interaction.followup({ content: "Failed to deliver username (Partner may have DMs disabled).", ephemeral: true });
+                await interaction.followup({
+                    components: [EmbedFactory.createErrorEmbed("Delivery Failed", "Failed to deliver username (Partner may have DMs disabled).")],
+                    flags: MessageFlags.IsComponentsV2,
+                    ephemeral: true
+                });
             }
         }
     }

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const db = require('../services/database');
 const matchmaking = require('../services/matchmaking');
 const safety = require('../services/safety');
@@ -15,7 +15,8 @@ module.exports = {
         const safetyStatus = safety.checkUserSafetyStatus(interaction.user.id);
         if (!safetyStatus.isAllowed) {
             return interaction.reply({
-                embeds: [EmbedFactory.createErrorEmbed("Access Denied", safetyStatus.reason)],
+                components: [EmbedFactory.createErrorEmbed("Access Denied", safetyStatus.reason)],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         }
@@ -24,7 +25,8 @@ module.exports = {
         const profile = db.getUserProfile(interaction.user.id);
         if (!profile || !profile.is_onboarded) {
             return interaction.reply({
-                content: "Please set up your profile first using `/onboard`.",
+                components: [EmbedFactory.createInfoEmbed("Profile Required", "Please set up your profile first using `/onboard`.")],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         }
@@ -33,7 +35,8 @@ module.exports = {
         const activeSession = db.getActiveSessionForUser(interaction.user.id);
         if (activeSession) {
             return interaction.reply({
-                content: "You are already in a chat! Use `/leave` to end it first.",
+                components: [EmbedFactory.createErrorEmbed("Active Session", "You are already in a chat! Use `/leave` to end it first.")],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         }
@@ -42,7 +45,8 @@ module.exports = {
         const position = matchmaking.getQueuePosition(interaction.user.id);
         if (position) {
             return interaction.reply({
-                content: "You are already in the queue! Please wait...",
+                components: [EmbedFactory.createInfoEmbed("Already Searching", "You are already in the queue! Please wait...")],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         }
@@ -53,14 +57,19 @@ module.exports = {
         if (added) {
             const queueSize = matchmaking.getQueueSize();
             await interaction.reply({
-                embeds: [EmbedFactory.createSearchEmbed(queueSize)],
+                components: [EmbedFactory.createSearchEmbed(queueSize)],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
 
             // Trigger match attempt
             await this.attemptMatch(interaction.user.id, interaction.client);
         } else {
-            await interaction.reply({ content: "Failed to join queue.", ephemeral: true });
+            await interaction.reply({
+                components: [EmbedFactory.createErrorEmbed("Queue Error", "Failed to join queue.")],
+                flags: MessageFlags.IsComponentsV2,
+                ephemeral: true
+            });
         }
     },
 

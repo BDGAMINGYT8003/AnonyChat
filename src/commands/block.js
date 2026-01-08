@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const db = require('../services/database');
 const safety = require('../services/safety');
 const EmbedFactory = require('../utils/embeds');
@@ -13,7 +13,8 @@ module.exports = {
 
         if (!session) {
             return interaction.reply({
-                content: "You are not in an active chat.",
+                components: [EmbedFactory.createErrorEmbed("Error", "You are not in an active chat.")],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         }
@@ -21,21 +22,25 @@ module.exports = {
         const partnerId = session.user1_id === interaction.user.id ? session.user2_id : session.user1_id;
 
         // Block logic
-        const result = safety.emergencyBlockUser(interaction.user.id, partnerId, "User requested block");
+        safety.emergencyBlockUser(interaction.user.id, partnerId, "User requested block");
 
         // End session
         db.endChatSession(session.session_id);
 
         // Notify user
         await interaction.reply({
-            embeds: [EmbedFactory.createSuccessEmbed("Blocked", "User has been blocked and session ended.")],
+            components: [EmbedFactory.createSuccessEmbed("Blocked", "User has been blocked and session ended.")],
+            flags: MessageFlags.IsComponentsV2,
             ephemeral: true
         });
 
         // Notify partner (generic message)
         try {
             const partner = await interaction.client.users.fetch(partnerId);
-            await partner.send({ embeds: [EmbedFactory.createChatEndedEmbed("Partner disconnected.")] });
+            await partner.send({
+                components: [EmbedFactory.createChatEndedEmbed("Partner disconnected.")],
+                flags: MessageFlags.IsComponentsV2
+            });
         } catch (e) {}
     },
 };

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const db = require('../services/database');
 const EmbedFactory = require('../utils/embeds');
 
@@ -14,6 +14,11 @@ module.exports = {
     async execute(interaction) {
         const anonymousId = interaction.options.getString('anonymous_id');
         db.removeBlock(interaction.user.id, anonymousId);
-        await interaction.reply({ content: `✅ User \`${anonymousId.substring(0, 8)}...\` has been unblocked.`, ephemeral: true });
+
+        await interaction.reply({
+            components: [EmbedFactory.createSuccessEmbed("Unblocked", `✅ User \`${anonymousId.substring(0, 8)}...\` has been unblocked.`)],
+            flags: MessageFlags.IsComponentsV2,
+            ephemeral: true
+        });
     },
 };

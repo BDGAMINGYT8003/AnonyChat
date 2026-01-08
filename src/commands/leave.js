@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const db = require('../services/database');
 const matchmaking = require('../services/matchmaking');
 const chatService = require('../services/chat');
@@ -15,7 +15,8 @@ module.exports = {
         if (position) {
             await matchmaking.removeFromQueue(interaction.user.id);
             return interaction.reply({
-                content: "✅ You have been removed from the matchmaking queue.",
+                components: [EmbedFactory.createSuccessEmbed("Queue Left", "You have been removed from the matchmaking queue.")],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         }
@@ -24,13 +25,15 @@ module.exports = {
         const session = db.getActiveSessionForUser(interaction.user.id);
         if (session) {
             return interaction.reply({
-                content: "You are currently in a chat session. Use `/end` to leave the chat.",
+                components: [EmbedFactory.createInfoEmbed("Active Chat", "You are currently in a chat session. Use `/end` to leave the chat.")],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         }
 
         return interaction.reply({
-            content: "You are not in the matchmaking queue.",
+            components: [EmbedFactory.createInfoEmbed("Not In Queue", "You are not in the matchmaking queue.")],
+            flags: MessageFlags.IsComponentsV2,
             ephemeral: true
         });
     },

@@ -1,6 +1,6 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, MessageFlags, TextDisplayBuilder, SectionBuilder, SeparatorBuilder } = require('discord.js');
 const db = require('../services/database');
-const { ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const EmbedFactory = require('../utils/embeds');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -11,20 +11,30 @@ module.exports = {
         const blockedUsers = db.getBlockedUsers(interaction.user.id);
 
         if (blockedUsers.length === 0) {
-            return interaction.reply({ content: "✅ You haven't blocked any users.", ephemeral: true });
+            return interaction.reply({
+                components: [EmbedFactory.createSuccessEmbed("Blocklist", "✅ You haven't blocked any users.")],
+                flags: MessageFlags.IsComponentsV2,
+                ephemeral: true
+            });
         }
 
-        const embed = new EmbedBuilder()
-            .setTitle("🚫 Your Blocked Users")
-            .setDescription(`You have blocked ${blockedUsers.length} users:`)
-            .setColor(0xff6b6b);
+        const container = EmbedFactory.createContainer(0xff6b6b);
+        container.addComponents(
+            new TextDisplayBuilder().setContent(`# 🚫 Your Blocked Users\nYou have blocked ${blockedUsers.length} users:`),
+            new SeparatorBuilder()
+        );
 
+        const section = new SectionBuilder();
         blockedUsers.slice(0, 10).forEach((anonId, i) => {
-            embed.addFields({ name: `User ${i + 1}`, value: `\`${anonId.substring(0, 8)}...\``, inline: true });
+            section.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**User ${i + 1}**: \`${anonId.substring(0, 8)}...\``));
         });
+        container.addComponents(section);
 
         if (blockedUsers.length > 10) {
-            embed.setFooter({ text: `Showing first 10 of ${blockedUsers.length} blocked users` });
+            container.addComponents(
+                new SeparatorBuilder(),
+                new TextDisplayBuilder().setContent(`*Showing first 10 of ${blockedUsers.length} blocked users*`)
+            );
         }
 
         const options = blockedUsers.slice(0, 25).map((anonId, i) => ({
@@ -41,6 +51,10 @@ module.exports = {
                     .addOptions(options)
             );
 
-        await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+        await interaction.reply({
+            components: [container, row],
+            flags: MessageFlags.IsComponentsV2,
+            ephemeral: true
+        });
     },
 };

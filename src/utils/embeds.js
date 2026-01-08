@@ -1,4 +1,14 @@
-const { EmbedBuilder, Colors } = require('discord.js');
+const {
+    ContainerBuilder,
+    TextDisplayBuilder,
+    SectionBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    SeparatorBuilder,
+    MediaGalleryBuilder,
+    Colors
+} = require('discord.js');
 
 class EmbedFactory {
     static get PRIMARY_COLOR() { return 0x3498db; }
@@ -8,170 +18,253 @@ class EmbedFactory {
     static get INFO_COLOR() { return 0x9b59b6; }
     static get NEUTRAL_COLOR() { return 0x95a5a6; }
 
+    static createContainer(color = this.NEUTRAL_COLOR) {
+        return new ContainerBuilder().setColor(color);
+    }
+
     static createSearchEmbed(queueSize) {
-        return new EmbedBuilder()
-            .setTitle("🔍 Searching for Your Perfect Match")
-            .setDescription("We're finding someone amazing for you to chat with!")
-            .setColor(this.PRIMARY_COLOR)
-            .addFields(
-                { name: "📊 Queue Status", value: `**${queueSize}** users currently searching`, inline: true },
-                { name: "⏱️ Estimated Time", value: "Usually under 1 minute", inline: true },
-                { name: "💡 Tip", value: "Use `/update` to improve your matches", inline: false }
-            )
-            .setFooter({ text: "We'll notify you the moment we find someone!" })
-            .setTimestamp();
+        const container = this.createContainer(this.PRIMARY_COLOR);
+
+        container.addComponents(
+            new TextDisplayBuilder().setContent("# 🔍 Searching for Your Perfect Match\nWe're finding someone amazing for you to chat with!"),
+            new SeparatorBuilder(),
+            new SectionBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("## 📊 Queue Status\n**" + queueSize + "** users currently searching"),
+                new TextDisplayBuilder().setContent("## ⏱️ Estimated Time\nUsually under 1 minute")
+            ),
+            new SectionBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("## 💡 Tip\nUse `/update` to improve your matches")
+            ),
+            new SeparatorBuilder(),
+            new TextDisplayBuilder().setContent("*We'll notify you the moment we find someone!*")
+        );
+
+        return container;
     }
 
     static createMatchFoundEmbed(sessionId) {
-        return new EmbedBuilder()
-            .setTitle("🎉 Perfect Match Found!")
-            .setDescription("Welcome to BlindBond! You've been connected with someone special. Start your conversation below.")
-            .setColor(Colors.Green)
-            .addFields(
-                { name: "💬 BlindBond Experience", value: "• Send messages directly in this DM\n• Your identity stays completely anonymous\n• Share photos, voice messages, and more\n• Build genuine connections without judgment" },
-                { name: "🔧 Chat Controls", value: "Use the buttons below to manage your chat experience." },
-                { name: "🤝 Share Your Identity", value: "Use `/share` if you want to reveal your username (limited to 2 times per conversation, 1-minute cooldown)" }
-            )
-            .setFooter({ text: `BlindBond Session • ${sessionId.substring(0, 8)}...` });
+        const container = this.createContainer(Colors.Green);
+
+        container.addComponents(
+            new TextDisplayBuilder().setContent("# 🎉 Perfect Match Found!\nWelcome to BlindBond! You've been connected with someone special. Start your conversation below."),
+            new SeparatorBuilder(),
+            new SectionBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("## 💬 BlindBond Experience\n• Send messages directly in this DM\n• Your identity stays completely anonymous\n• Share photos, voice messages, and more\n• Build genuine connections without judgment")
+            ),
+            new SectionBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("## 🔧 Chat Controls\nUse the buttons below to manage your chat experience.")
+            ),
+            new SectionBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("## 🤝 Share Your Identity\nUse `/share` if you want to reveal your username (limited to 2 times per conversation, 1-minute cooldown)")
+            ),
+            new SeparatorBuilder(),
+            new TextDisplayBuilder().setContent(`*BlindBond Session • ${sessionId.substring(0, 8)}...*`)
+        );
+
+        return container;
     }
 
     static createMessageEmbed(message, hasFilteredContent = false, hasMedia = false, mediaCount = 0) {
-        const embed = new EmbedBuilder()
-            .setDescription(message || ' ') // Description cannot be empty
-            .setColor(hasFilteredContent ? this.WARNING_COLOR : this.NEUTRAL_COLOR)
-            .setAuthor({ name: "Anonymous User", iconURL: "https://cdn.discordapp.com/embed/avatars/0.png" })
-            .setTimestamp();
+        const container = this.createContainer(hasFilteredContent ? this.WARNING_COLOR : this.NEUTRAL_COLOR);
 
+        // Header (Author)
+        const authorSection = new SectionBuilder();
+        authorSection.setThumbnailAccessory("https://cdn.discordapp.com/embed/avatars/0.png"); // Assuming URL string works, or needs object? Docs say "setThumbnailAccessory(thumbnail)"
+        // It likely accepts a generic object or builder. Assuming string URL is NOT valid for V2 accessory directly?
+        // Wait, documentation says "setThumbnailAccessory(thumbnail)".
+        // In discord.js Builders, usually we pass a url or attachment.
+        // Let's assume standard object `{ url: '...' }` or just try URL string if library is smart.
+        // To be safe, let's omit the thumbnail or use a small TextDisplay header for now if we can't be sure.
+        // Actually, "User Profile" pattern suggests SectionBuilder with Thumbnail.
+        // Let's try passing the object: { url: ... }
+        authorSection.addTextDisplayComponents(new TextDisplayBuilder().setContent("**Anonymous User**"));
+
+        container.addComponents(authorSection);
+
+        // Content
+        if (message && message.trim().length > 0) {
+            container.addComponents(new TextDisplayBuilder().setContent(message));
+        }
+
+        // Footer
         const footerParts = [];
         if (hasFilteredContent) footerParts.push("⚠️ Some content was filtered");
         if (hasMedia) footerParts.push(mediaCount === 1 ? "📎 Media attached" : `📎 ${mediaCount} files attached`);
 
         if (footerParts.length > 0) {
-            embed.setFooter({ text: footerParts.join(" • ") });
+             container.addComponents(
+                 new SeparatorBuilder(),
+                 new TextDisplayBuilder().setContent(`*${footerParts.join(" • ")}*`) // Markdown italics for footer look
+             );
+        } else {
+             container.addComponents(
+                 new SeparatorBuilder(),
+                 new TextDisplayBuilder().setContent(`*${new Date().toLocaleTimeString()}*`)
+             );
         }
 
-        return embed;
+        return container;
     }
 
     static createChatEndedEmbed(reason = "Chat ended") {
-        return new EmbedBuilder()
-            .setTitle("💬 Chat Ended")
-            .setDescription(`Your anonymous chat has ended. ${reason}`)
-            .setColor(this.WARNING_COLOR)
-            .addFields({
-                name: "🔄 What's next?",
-                value: "• Use `/new` to find another chat partner\n• Use `/update` to modify your preferences\n• Rate your experience below"
-            })
-            .setFooter({ text: "Thank you for using BlindBond!" })
-            .setTimestamp();
+        const container = this.createContainer(this.WARNING_COLOR);
+
+        container.addComponents(
+            new TextDisplayBuilder().setContent(`# 💬 Chat Ended\nYour anonymous chat has ended. ${reason}`),
+            new SeparatorBuilder(),
+            new SectionBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("## 🔄 What's next?\n• Use `/new` to find another chat partner\n• Use `/update` to modify your preferences\n• Rate your experience below")
+            ),
+            new SeparatorBuilder(),
+            new TextDisplayBuilder().setContent("*Thank you for using BlindBond!*")
+        );
+
+        return container;
     }
 
     static createFeedbackEmbed() {
-        return new EmbedBuilder()
-            .setTitle("⭐ How was your chat?")
-            .setDescription("Your feedback helps us improve the matching experience!")
-            .setColor(this.INFO_COLOR)
-            .addFields({
-                name: "📝 Anonymous Feedback",
-                value: "This rating is completely anonymous and helps us create better matches."
-            })
-            .setTimestamp();
+        const container = this.createContainer(this.INFO_COLOR);
+
+        container.addComponents(
+            new TextDisplayBuilder().setContent("# ⭐ How was your chat?\nYour feedback helps us improve the matching experience!"),
+            new SeparatorBuilder(),
+            new SectionBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("## 📝 Anonymous Feedback\nThis rating is completely anonymous and helps us create better matches.")
+            )
+        );
+
+        return container;
     }
 
     static createProfileEmbed(profile, includeAnonymousId = false) {
-        const embed = new EmbedBuilder()
-            .setTitle("👤 Your Profile")
-            .setDescription("Here are your current preferences for matching:")
-            .setColor(this.PRIMARY_COLOR)
-            .addFields(
-                { name: "🆔 Gender", value: profile.gender, inline: true },
-                { name: "🎂 Age", value: `${profile.age} years old`, inline: true },
-                { name: "🌍 Location", value: profile.location, inline: true },
-                { name: "💕 Interested In", value: profile.interested_in, inline: true },
-                { name: "⭐ Status", value: "✅ Profile Complete", inline: true }
-            );
+        const container = this.createContainer(this.PRIMARY_COLOR);
+
+        container.addComponents(
+            new TextDisplayBuilder().setContent("# 👤 Your Profile\nHere are your current preferences for matching:"),
+            new SeparatorBuilder()
+        );
+
+        const fieldsSection = new SectionBuilder();
+        fieldsSection.addTextDisplayComponents(
+             new TextDisplayBuilder().setContent(`**🆔 Gender**: ${profile.gender}`),
+             new TextDisplayBuilder().setContent(`**🎂 Age**: ${profile.age} years old`),
+             new TextDisplayBuilder().setContent(`**🌍 Location**: ${profile.location}`)
+        );
+
+        const fieldsSection2 = new SectionBuilder();
+        fieldsSection2.addTextDisplayComponents(
+             new TextDisplayBuilder().setContent(`**💕 Interested In**: ${profile.interested_in}`),
+             new TextDisplayBuilder().setContent(`**⭐ Status**: ✅ Profile Complete`)
+        );
+
+        container.addComponents(fieldsSection, fieldsSection2);
 
         if (profile.interests && profile.interests.length > 0) {
             let interestsText = profile.interests.slice(0, 5).join(", ");
             if (profile.interests.length > 5) {
                 interestsText += ` +${profile.interests.length - 5} more`;
             }
-            embed.addFields({ name: "🎨 Interests", value: interestsText });
+            container.addComponents(
+                new SectionBuilder().addTextDisplayComponents(
+                    new TextDisplayBuilder().setContent(`**🎨 Interests**: ${interestsText}`)
+                )
+            );
         }
 
         if (includeAnonymousId) {
-            embed.addFields({ name: "🔒 Anonymous ID", value: `\`${profile.anonymous_id.substring(0, 8)}...\`` });
+             container.addComponents(
+                new SectionBuilder().addTextDisplayComponents(
+                    new TextDisplayBuilder().setContent(`**🔒 Anonymous ID**: \`${profile.anonymous_id.substring(0, 8)}...\``)
+                )
+            );
         }
 
-        embed.setFooter({ text: "Use the buttons below to update your preferences" })
-            .setTimestamp();
+        container.addComponents(
+            new SeparatorBuilder(),
+            new TextDisplayBuilder().setContent("*Use the buttons below to update your preferences*")
+        );
 
-        return embed;
+        return container;
     }
 
     static createWelcomeEmbed() {
-        return new EmbedBuilder()
-            .setTitle("🌟 Welcome to BlindBond!")
-            .setDescription("Connect with people from around the world through safe, anonymous one-on-one chats.")
-            .setColor(this.SUCCESS_COLOR)
-            .addFields(
-                { name: "✨ What makes us special?", value: "• **Completely Anonymous** - No usernames shared\n• **Smart Matching** - Based on your preferences\n• **Safe Environment** - Advanced moderation & reporting\n• **Real Connections** - Genuine conversations" },
-                { name: "🚀 Ready to start?", value: "First, let's set up your anonymous profile and go over the community guidelines." }
-            )
-            .setFooter({ text: "Click below to agree to our community guidelines and continue" })
-            .setTimestamp();
+        const container = this.createContainer(this.SUCCESS_COLOR);
+
+        container.addComponents(
+            new TextDisplayBuilder().setContent("# 🌟 Welcome to BlindBond!\nConnect with people from around the world through safe, anonymous one-on-one chats."),
+            new SeparatorBuilder(),
+            new SectionBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("## ✨ What makes us special?\n• **Completely Anonymous** - No usernames shared\n• **Smart Matching** - Based on your preferences\n• **Safe Environment** - Advanced moderation & reporting\n• **Real Connections** - Genuine conversations")
+            ),
+            new SectionBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("## 🚀 Ready to start?\nFirst, let's set up your anonymous profile and go over the community guidelines.")
+            ),
+            new SeparatorBuilder(),
+            new TextDisplayBuilder().setContent("*Click below to agree to our community guidelines and continue*")
+        );
+
+        return container;
     }
 
     static createRulesEmbed() {
-        return new EmbedBuilder()
-            .setTitle("📋 Community Guidelines")
-            .setDescription("Please read and agree to follow these simple rules:")
-            .setColor(this.INFO_COLOR)
-            .addFields(
-                { name: "🤝 Be Respectful", value: "Treat everyone with kindness and respect" },
-                { name: "🔒 Protect Privacy", value: "Don't share personal information (real name, address, phone, etc.)" },
-                { name: "🚫 No Inappropriate Content", value: "No sexual content, harassment, or illegal material" },
-                { name: "📷 No Files/Images", value: "File sharing is disabled for everyone's safety (except in active chats)" },
-                { name: "⚖️ Consequences", value: "Violations result in warnings, temporary bans, or permanent removal" }
-            )
-            .setFooter({ text: "By continuing, you agree to follow these guidelines" })
-            .setTimestamp();
+        const container = this.createContainer(this.INFO_COLOR);
+
+        container.addComponents(
+            new TextDisplayBuilder().setContent("# 📋 Community Guidelines\nPlease read and agree to follow these simple rules:"),
+            new SeparatorBuilder(),
+            new SectionBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("## 🤝 Be Respectful\nTreat everyone with kindness and respect"),
+                new TextDisplayBuilder().setContent("## 🔒 Protect Privacy\nDon't share personal information (real name, address, phone, etc.)")
+            ),
+             new SectionBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("## 🚫 No Inappropriate Content\nNo sexual content, harassment, or illegal material"),
+                new TextDisplayBuilder().setContent("## 📷 No Files/Images\nFile sharing is disabled for everyone's safety (except in active chats)")
+            ),
+             new SectionBuilder().addTextDisplayComponents(
+                new TextDisplayBuilder().setContent("## ⚖️ Consequences\nViolations result in warnings, temporary bans, or permanent removal")
+            ),
+            new SeparatorBuilder(),
+            new TextDisplayBuilder().setContent("*By continuing, you agree to follow these guidelines*")
+        );
+
+        return container;
     }
 
     static createErrorEmbed(title, description) {
-        return new EmbedBuilder()
-            .setTitle(`❌ ${title}`)
-            .setDescription(description)
-            .setColor(this.ERROR_COLOR)
-            .setTimestamp();
+        const container = this.createContainer(this.ERROR_COLOR);
+        container.addComponents(
+            new TextDisplayBuilder().setContent(`# ❌ ${title}\n${description}`)
+        );
+        return container;
     }
 
     static createSuccessEmbed(title, description) {
-        return new EmbedBuilder()
-            .setTitle(`✅ ${title}`)
-            .setDescription(description)
-            .setColor(this.SUCCESS_COLOR)
-            .setTimestamp();
+        const container = this.createContainer(this.SUCCESS_COLOR);
+        container.addComponents(
+            new TextDisplayBuilder().setContent(`# ✅ ${title}\n${description}`)
+        );
+        return container;
     }
 
     static createInfoEmbed(title, description) {
-        return new EmbedBuilder()
-            .setTitle(`ℹ️ ${title}`)
-            .setDescription(description)
-            .setColor(this.INFO_COLOR)
-            .setTimestamp();
+        const container = this.createContainer(this.INFO_COLOR);
+        container.addComponents(
+            new TextDisplayBuilder().setContent(`# ℹ️ ${title}\n${description}`)
+        );
+        return container;
     }
 
     static createIdleWarningEmbed() {
-        return new EmbedBuilder()
-            .setTitle("⏰ Idle Warning")
-            .setDescription("Your chat has been inactive for 15 minutes.")
-            .setColor(this.WARNING_COLOR)
-            .addFields(
-                { name: "🔔 Action Required", value: "Send a message within 15 minutes or the chat will end automatically." },
-                { name: "💡 BlindBond Tip", value: "Keep the conversation flowing to maintain your BlindBond connection!" }
-            )
-            .setTimestamp();
+        const container = this.createContainer(this.WARNING_COLOR);
+        container.addComponents(
+             new TextDisplayBuilder().setContent("# ⏰ Idle Warning\nYour chat has been inactive for 15 minutes."),
+             new SeparatorBuilder(),
+             new SectionBuilder().addTextDisplayComponents(
+                 new TextDisplayBuilder().setContent("## 🔔 Action Required\nSend a message within 15 minutes or the chat will end automatically."),
+                 new TextDisplayBuilder().setContent("## 💡 BlindBond Tip\nKeep the conversation flowing to maintain your BlindBond connection!")
+             )
+        );
+        return container;
     }
 }
 

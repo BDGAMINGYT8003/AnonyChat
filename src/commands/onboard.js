@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const db = require('../services/database');
 const EmbedFactory = require('../utils/embeds');
 
@@ -19,7 +19,8 @@ module.exports = {
 
         if (profile.is_onboarded) {
             return interaction.reply({
-                content: "You are already onboarded! Use `/profile` to view or edit your profile.",
+                components: [EmbedFactory.createInfoEmbed("Already Onboarded", "You are already onboarded! Use `/profile` to view or edit your profile.")],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         }
@@ -42,13 +43,27 @@ module.exports = {
                     ),
             );
 
-        const embed = EmbedFactory.createWelcomeEmbed()
-            .setDescription("To get started, please select your gender:");
+        const container = EmbedFactory.createWelcomeEmbed();
+        // createWelcomeEmbed returns a ContainerBuilder.
+        // We can create a new container that includes the instruction.
+        // Or modify the existing logic in EmbedFactory to include it or just rely on the selection menu context.
+        // Let's create a wrapper container or just send the welcome embed.
+        // Wait, "To get started..." description.
+        // I'll add a TextDisplay to the container.
+        const { TextDisplayBuilder } = require('discord.js');
+        container.addComponents(new TextDisplayBuilder().setContent("To get started, please select your gender:"));
 
         if (interaction.replied || interaction.deferred) {
-            await interaction.editReply({ embeds: [embed], components: [row] });
+            await interaction.editReply({
+                components: [container, row],
+                flags: MessageFlags.IsComponentsV2
+            });
         } else {
-            await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+            await interaction.reply({
+                components: [container, row],
+                flags: MessageFlags.IsComponentsV2,
+                ephemeral: true
+            });
         }
     },
 
@@ -58,7 +73,11 @@ module.exports = {
         let profile = db.getUserProfile(userId);
 
         if (!profile) {
-            return interaction.reply({ content: "Profile not found. Please run `/onboard` again.", ephemeral: true });
+            return interaction.reply({
+                components: [EmbedFactory.createErrorEmbed("Error", "Profile not found. Please run `/onboard` again.")],
+                flags: MessageFlags.IsComponentsV2,
+                ephemeral: true
+            });
         }
 
         if (customId === 'onboard_gender_select') {
@@ -88,7 +107,11 @@ module.exports = {
             const age = parseInt(ageStr);
 
             if (isNaN(age) || age < 13 || age > 99) {
-                return interaction.reply({ content: "❌ Invalid age. You must be between 13 and 99.", ephemeral: true });
+                return interaction.reply({
+                    components: [EmbedFactory.createErrorEmbed("Invalid Age", "❌ You must be between 13 and 99.")],
+                    flags: MessageFlags.IsComponentsV2,
+                    ephemeral: true
+                });
             }
 
             profile.age = age;
@@ -110,9 +133,11 @@ module.exports = {
                         ),
                 );
 
+            const container = EmbedFactory.createSuccessEmbed("Age Saved", `✅ Age saved: ${age}. Now select your region:`);
+
             await interaction.reply({
-                content: `✅ Age saved: ${age}. Now select your region:`,
-                components: [row],
+                components: [container, row],
+                flags: MessageFlags.IsComponentsV2,
                 ephemeral: true
             });
         } else if (customId === 'onboard_location_select') {
@@ -133,9 +158,11 @@ module.exports = {
                         ),
                 );
 
+            const container = EmbedFactory.createSuccessEmbed("Region Saved", `✅ Region saved: ${location}. Who are you interested in chatting with?`);
+
             await interaction.update({
-                content: `✅ Region saved: ${location}. Who are you interested in chatting with?`,
-                components: [row]
+                components: [container, row],
+                flags: MessageFlags.IsComponentsV2
             });
         } else if (customId === 'onboard_interested_in_select') {
             const interestedIn = interaction.values[0];
@@ -166,9 +193,13 @@ module.exports = {
             profile.is_onboarded = true; // Complete!
             db.updateUserProfile(profile);
 
-            const embed = EmbedFactory.createSuccessEmbed("Onboarding Complete!", "Your profile has been set up. You can now use `/new` to find a chat partner!");
+            const container = EmbedFactory.createSuccessEmbed("Onboarding Complete!", "Your profile has been set up. You can now use `/new` to find a chat partner!");
 
-            await interaction.reply({ embeds: [embed], ephemeral: true });
+            await interaction.reply({
+                components: [container],
+                flags: MessageFlags.IsComponentsV2,
+                ephemeral: true
+            });
         }
     }
 };

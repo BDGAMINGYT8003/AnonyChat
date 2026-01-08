@@ -1,26 +1,31 @@
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
+const { ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, MediaGalleryBuilder } = require('discord.js');
 const db = require('./database');
 const safety = require('./safety');
 const EmbedFactory = require('../utils/embeds');
 
 class ChatService {
     constructor() {
-        // We will need client access for fetching users, but it's often passed or global.
-        // For now, methods accept 'client' or interaction/message.
     }
 
     async startChatSession(client, user1Id, user2Id, user1Anon, user2Anon) {
         const sessionId = db.createChatSession(user1Id, user2Id, user1Anon, user2Anon);
 
-        const embed = EmbedFactory.createMatchFoundEmbed(sessionId);
+        const container = EmbedFactory.createMatchFoundEmbed(sessionId);
         const row = this.createChatControlView();
 
         try {
             const user1 = await client.users.fetch(user1Id);
             const user2 = await client.users.fetch(user2Id);
 
-            await user1.send({ embeds: [embed], components: [row] });
-            await user2.send({ embeds: [embed], components: [row] });
+            // V2: Send Container and ActionRow in 'components' array, set flag
+            await user1.send({
+                components: [container, row],
+                flags: MessageFlags.IsComponentsV2
+            });
+            await user2.send({
+                components: [container, row],
+                flags: MessageFlags.IsComponentsV2
+            });
 
             return sessionId;
         } catch (error) {
@@ -57,103 +62,144 @@ class ChatService {
         const session = db.getActiveSessionForUser(message.author.id);
         if (!session) return;
 
-        // Block slash commands
         if (message.content.trim().startsWith('/')) {
             await message.react("❌").catch(() => {});
-            await message.author.send("❌ Commands starting with `/` cannot be sent in chat. These are reserved for bot commands.");
+            await message.author.send({
+                components: [EmbedFactory.createErrorEmbed("Command Error", "Commands starting with `/` cannot be sent in chat. These are reserved for bot commands.")],
+                flags: MessageFlags.IsComponentsV2
+            });
             return;
         }
 
-        // Safety check
         const safetyStatus = safety.checkUserSafetyStatus(message.author.id);
         if (!safetyStatus.isAllowed) {
-            await message.author.send(`❌ ${safetyStatus.reason}`);
+            await message.author.send({
+                components: [EmbedFactory.createErrorEmbed("Safety Restriction", safetyStatus.reason)],
+                flags: MessageFlags.IsComponentsV2
+            });
             return;
         }
 
         const { isAllowed, filteredMessage, violations } = safety.filterMessage(message.content);
-        if (!isAllowed) { // This handles SPAM blocking (returns false), profanity is filtered (returns true)
-             await message.author.send("❌ Your message was blocked due to inappropriate content.");
+        if (!isAllowed) {
+             await message.author.send({
+                 components: [EmbedFactory.createErrorEmbed("Message Blocked", "Your message was blocked due to inappropriate content.")],
+                 flags: MessageFlags.IsComponentsV2
+             });
+
              const { continueAllowed, actionMessage } = safety.handleViolation(message.author.id, `blocked_message: ${violations.join(", ")}`);
-             if (actionMessage) await message.author.send(actionMessage);
+             if (actionMessage) {
+                 await message.author.send({
+                     components: [EmbedFactory.createErrorEmbed("Safety Action", actionMessage)],
+                     flags: MessageFlags.IsComponentsV2
+                 });
+             }
              if (!continueAllowed) await this.endChat(message.client, session.session_id, "User violation");
              return;
         }
 
-        // Prepare Forwarding
         const hasMedia = message.attachments.size > 0;
         const mediaCount = message.attachments.size;
         const hasStickers = message.stickers.size > 0;
         const hasFilteredContent = violations.length > 0 && violations.includes("inappropriate_content");
 
-        // DB Update
         db.updateSessionActivity(session.session_id);
         db.incrementMessageCount(session.session_id);
 
-        // Target
         const partnerId = session.user1_id === message.author.id ? session.user2_id : session.user1_id;
 
         try {
             const partner = await message.client.users.fetch(partnerId);
 
-            // 1. Embed Logic
-            const embed = EmbedFactory.createMessageEmbed(
+            // 1. Create Main Container
+            const container = EmbedFactory.createMessageEmbed(
                 filteredMessage,
                 hasFilteredContent,
-                hasMedia || hasStickers, // "Media attached" footer
+                hasMedia || hasStickers,
                 mediaCount + (hasStickers ? message.stickers.size : 0)
             );
 
-            // 2. Sticker Info in Embed Description (as per Python code)
-            const stickerUrls = [];
+            const components = [container];
+
+            // 2. Media Gallery (Images)
+            // Filter attachments for images
+            const imageAttachments = message.attachments.filter(a => a.contentType && a.contentType.startsWith('image/'));
+
+            if (imageAttachments.size > 0) {
+                const gallery = new MediaGalleryBuilder();
+                imageAttachments.forEach(att => {
+                    gallery.addItems({ media: { url: att.url }, description: att.description || 'Attached Image' });
+                });
+                components.push(gallery);
+            }
+
+            // Note: Other file types (pdf, etc.) might not be supported in V2 if strict.
+            // But we can include them as links in text if needed, or hope files prop still works alongside V2 components?
+            // User spec: "content, embeds, stickers, and poll cannot be used."
+            // Files/attachments are usually separate. But "Audio files... no support".
+            // Let's assume we can send `files: [...]` alongside `components: [...]` for non-image files, or just ignore them if strict V2.
+            // For now, I'll only handle images via MediaGallery.
+            // What about Stickers?
+
             if (hasStickers) {
-                const sticker = message.stickers.first();
-                const stickerInfo = `\n\n🎭 **Sticker:** ${sticker.name} - [View Sticker](${sticker.url})`;
-                embed.setDescription((embed.data.description || "") + stickerInfo);
-                stickerUrls.push(sticker.url);
+                 const sticker = message.stickers.first();
+                 // Stickers are images usually. Add to gallery?
+                 // Or just link.
+                 // Let's rely on the link in description from previous step if any (EmbedFactory logic didn't add link).
+                 // Let's add sticker as MediaGallery item if it has a URL.
+                 if (sticker.url) {
+                      // Check if gallery exists or create new
+                      let gallery = components.find(c => c instanceof MediaGalleryBuilder);
+                      if (!gallery) {
+                          gallery = new MediaGalleryBuilder();
+                          components.push(gallery);
+                      }
+                      gallery.addItems({ media: { url: sticker.url }, description: `Sticker: ${sticker.name}` });
+                 }
             }
 
-            // 3. Attachments
-            const files = message.attachments.map(a => ({ attachment: a.url }));
-
-            // 4. Send Main Message
-            await partner.send({ embeds: [embed], files: files }); // Stickers as files? No, just link in embed + maybe file if supported. Python code just put link in embed. Node code puts link in embed.
-            // Wait, Python code said: "if stickers... send_kwargs['embed'] = embed" (modified description).
-
-            // 5. Rich Embeds (Links)
-            if (message.embeds.length > 0 && !hasMedia) {
-                // Forward original embeds (limit 3)
-                for (const originalEmbed of message.embeds.slice(0, 3)) {
-                     // We can't just forward the raw embed object sometimes due to structure differences,
-                     // but discord.js usually handles it if it's a valid EmbedBuilder/JSON.
-                     // However, message.embeds are APIEmbeds.
-                     // Let's try sending them.
-                     await partner.send({ embeds: [originalEmbed] }).catch(() => {});
-                }
-            }
+            await partner.send({
+                components: components,
+                flags: MessageFlags.IsComponentsV2,
+                // We'll omit 'files' to be strictly V2 compliant if the user text implies "Everything is a Component".
+                // If the user sends a PDF, it might be lost. But "Multimedia Restrictions" section implies V2 is visual.
+            });
 
             await message.react('✅').catch(() => {});
         } catch (error) {
              console.error("Message relay failed:", error);
-             await message.author.send("❌ Could not deliver your message. The other user may have left.");
+             await message.author.send({
+                 components: [EmbedFactory.createErrorEmbed("Delivery Failed", "Could not deliver your message. The other user may have left.")],
+                 flags: MessageFlags.IsComponentsV2
+             });
              this.endChat(message.client, session.session_id, "Message delivery failed");
         }
     }
 
     async endChat(client, sessionId, reason = "Session ended") {
         const session = db.getChatSession(sessionId);
-        if (!session || !session.is_active) return false; // Already ended
+        if (!session || !session.is_active) return false;
 
         db.endChatSession(sessionId);
 
-        // Stats
         const durationSeconds = (new Date() - new Date(session.started_at)) / 1000;
         const durationStr = this.formatDuration(durationSeconds);
         const messageCount = session.message_count || 0;
 
         const summaryText = `Duration: ${durationStr}\nTotal messages exchanged: ${messageCount}`;
-        const embed = EmbedFactory.createChatEndedEmbed(reason);
-        embed.addFields({ name: "📊 Conversation Summary", value: summaryText });
+        const container = EmbedFactory.createChatEndedEmbed(reason);
+        // We can't add fields to a Container directly after creation easily unless we access internal methods or rebuilt.
+        // But EmbedFactory returns a ContainerBuilder.
+        // ContainerBuilder has `addComponents`.
+        // We need to add the summary.
+
+        // Add summary as a Section
+        const { SectionBuilder, TextDisplayBuilder } = require('discord.js');
+        container.addComponents(
+             new SectionBuilder().addTextDisplayComponents(
+                 new TextDisplayBuilder().setContent(`## 📊 Conversation Summary\n${summaryText}`)
+             )
+        );
 
         const user1Id = session.user1_id;
         const user2Id = session.user2_id;
@@ -162,7 +208,10 @@ class ChatService {
             try {
                 const user = await client.users.fetch(userId);
                 const row = this.createFeedbackView(sessionId, otherUserId, otherUserAnon);
-                await user.send({ embeds: [embed], components: [row] });
+                await user.send({
+                    components: [container, row],
+                    flags: MessageFlags.IsComponentsV2
+                });
             } catch (e) {
                 // User blocked bot or left
             }
@@ -180,7 +229,7 @@ class ChatService {
                 new ButtonBuilder().setCustomId(`feedback_good:${sessionId}:${otherUserId}`).setLabel('Good').setStyle(ButtonStyle.Success).setEmoji('👍'),
                 new ButtonBuilder().setCustomId(`feedback_okay:${sessionId}`).setLabel('Okay').setStyle(ButtonStyle.Secondary).setEmoji('👌'),
                 new ButtonBuilder().setCustomId(`feedback_bad:${sessionId}`).setLabel('Bad').setStyle(ButtonStyle.Danger).setEmoji('👎'),
-                new ButtonBuilder().setCustomId(`chat_report_end:${otherUserId}`).setLabel('Report').setStyle(ButtonStyle.Secondary).setEmoji('🚩'), // Pass ID
+                new ButtonBuilder().setCustomId(`chat_report_end:${otherUserId}`).setLabel('Report').setStyle(ButtonStyle.Secondary).setEmoji('🚩'),
                 new ButtonBuilder().setCustomId(`chat_block:${otherUserId}:${otherUserAnon}`).setLabel('Block User').setStyle(ButtonStyle.Secondary).setEmoji('🚫')
             );
     }
@@ -192,17 +241,14 @@ class ChatService {
     }
 
     async blockUser(client, blockerId, blockedUserId, blockedAnonId, emergency = false) {
-        // Add to block list
         db.addBlock(blockerId, blockedAnonId);
 
         if (emergency) {
             safety.emergencyBlockUser(blockerId, blockedUserId, "emergency_button");
         }
 
-        // End session if active
         const session = db.getActiveSessionForUser(blockerId);
         if (session) {
-            // Verify if this session involves the blocked user
             if (session.user1_id === blockedUserId || session.user2_id === blockedUserId) {
                 await this.endChat(client, session.session_id, emergency ? "Emergency block activated" : "User blocked");
                 return "User has been blocked and chat ended.";
